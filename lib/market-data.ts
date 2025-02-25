@@ -70,8 +70,8 @@ async function fetchBirdseyeKlines(symbol: string, interval: string, limit: numb
         // Convert interval to uppercase format for Birdseye API
         const birdseyeInterval = BIRDSEYE_INTERVALS[interval] || interval.toUpperCase();
         
-        // Construct the Birdseye API URL - using v3 token market-data endpoint
-        const birdseyeUrl = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${tokenAddress}&interval=${birdseyeInterval}&limit=${limit}`;
+        // Construct the Birdseye API URL - using the OHLCV endpoint with 'type' parameter
+        const birdseyeUrl = `https://public-api.birdeye.so/defi/ohlcv?address=${tokenAddress}&type=${birdseyeInterval}&limit=${limit}`;
         
         console.log(`Fetching from Birdseye: ${birdseyeUrl}`);
         
@@ -96,12 +96,12 @@ async function fetchBirdseyeKlines(symbol: string, interval: string, limit: numb
 
         const data = await response.json();
         
-        if (!data.data || !Array.isArray(data.data.ohlcv)) {
+        if (!data.data || !Array.isArray(data.data.items)) {
           throw new Error('Empty or invalid response from Birdseye');
         }
         
         // Transform the data to our standard format
-        const transformedData = data.data.ohlcv.map((item: any) => ({
+        const transformedData = data.data.items.map((item: any) => ({
           symbol,
           timestamp: item.unixTime * 1000, // Convert to milliseconds
           open: parseFloat(item.open),
