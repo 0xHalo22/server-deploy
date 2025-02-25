@@ -1,0 +1,1 @@
+# HyperBore Terminal Codebase\n\n## Components\n
