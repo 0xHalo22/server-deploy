@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { addSubscription, removeSubscription } from './lib/market-data.js';
+import { addSubscription, removeSubscription, getCoinGeckoId } from './lib/market-data.js';
 import healthRouter from './routes/health.js';
 import marketDataRouter from './routes/market-data.js';
 const app = express();
@@ -10,28 +10,61 @@ const httpServer = createServer(app);
 // Allow multiple origins for CORS
 const allowedOrigins = [
     'http://localhost:3000',
-    'https://hyperbore.vercel.app', // Add your Vercel deployment URL
+    'http://localhost:4000',
+    'https://hyperbore.vercel.app',
+    'https://hyperbore-terminal.vercel.app',
+    'https://hyperbore-market-data.fly.dev',
     process.env.CLIENT_URL,
 ].filter(Boolean);
 // Configure CORS for both Express and Socket.IO
 const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl, Postman)
+        if (!origin) {
+            callback(null, true);
+            return;
+        }
+        // In development, allow all origins
+        if (process.env.NODE_ENV !== 'production') {
+            callback(null, true);
+            return;
+        }
+        // In production, check against allowed origins
+        if (allowedOrigins.some(allowedOrigin => allowedOrigin === '*' ||
+            origin.startsWith(allowedOrigin) ||
+            allowedOrigin === origin)) {
             callback(null, true);
         }
         else {
+            console.warn(`CORS blocked request from origin: ${origin}`);
             callback(new Error('Not allowed by CORS'));
         }
     },
-    methods: ['GET', 'POST'],
-    credentials: true
+    methods: ['GET', 'POST', 'OPTIONS'],
+    credentials: true,
+    maxAge: 86400 // 24 hours
 };
 const io = new Server(httpServer, {
-    cors: corsOptions
+    cors: corsOptions,
+    path: '/socket.io',
+    transports: ['websocket', 'polling'],
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
+// Add a simple route to help with debugging WebSocket connections
+app.get('/socket-status', (req, res) => {
+    const status = {
+        server: 'online',
+        socketServer: io ? 'initialized' : 'not initialized',
+        connections: Object.keys(io.sockets.sockets).length,
+        timestamp: Date.now()
+    };
+    res.json(status);
+});
 // Routes
 app.use('/health', healthRouter);
 app.use('/api/market-data', marketDataRouter);
@@ -41,8 +74,30 @@ const PROXY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // Add a route for CoinGecko proxy with improved caching and rate limit handling
 app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
     try {
-        const endpoint = req.params.endpoint;
-        const queryString = new URLSearchParams(req.query).toString();
+        let endpoint = req.params.endpoint;
+        const queryParams = req.query;
+        // Handle symbol conversion for specific endpoints
+        if (endpoint.includes('coins/') && !endpoint.includes('list') && !endpoint.includes('markets')) {
+            // Extract the coin ID from the endpoint (e.g., coins/bitcoin/market_chart)
+            const parts = endpoint.split('/');
+            const coinIdIndex = parts.indexOf('coins') + 1;
+            if (coinIdIndex < parts.length) {
+                const originalCoinId = parts[coinIdIndex];
+                // Check if this looks like a trading pair (e.g., BTCUSDT)
+                if (/^[A-Z0-9]{2,10}(USDT|BUSD|USD|USDC|DAI)$/.test(originalCoinId)) {
+                    // Try to convert it to a CoinGecko ID
+                    const coinId = getCoinGeckoId(originalCoinId);
+                    if (coinId && coinId !== originalCoinId) {
+                        // Replace the coin ID in the endpoint
+                        parts[coinIdIndex] = coinId;
+                        const newEndpoint = parts.join('/');
+                        console.log(`Converted endpoint from ${endpoint} to ${newEndpoint}`);
+                        endpoint = newEndpoint;
+                    }
+                }
+            }
+        }
+        const queryString = new URLSearchParams(queryParams).toString();
         const url = `https://api.coingecko.com/api/v3/${endpoint}${queryString ? `?${queryString}` : ''}`;
         // Create cache key from full URL
         const cacheKey = url;

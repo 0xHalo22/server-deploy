@@ -6,7 +6,10 @@ router.get('/', async (req, res) => {
     try {
         const { symbol, resolution, limit } = req.query;
         if (!symbol || !resolution) {
-            return res.status(400).json({ error: 'Missing required parameters: symbol, resolution' });
+            return res.status(400).json({
+                error: 'Missing required parameters: symbol, resolution',
+                message: 'Please provide both symbol (e.g., BTCUSDT) and resolution (e.g., 1m, 1h, 1d)'
+            });
         }
         const data = await fetchCoinGeckoKlines(symbol, resolution, limit ? parseInt(limit) : 1000);
         // Transform data for lightweight-charts
@@ -30,7 +33,17 @@ router.get('/', async (req, res) => {
     }
     catch (error) {
         console.error('Error fetching market data:', error);
-        res.status(500).json({ error: 'Failed to fetch market data' });
+        // Check if it's a known error type
+        if (error instanceof Error && error.message.includes('Unsupported symbol')) {
+            return res.status(400).json({
+                error: error.message,
+                supportedFormats: [
+                    'Trading pairs (e.g., BTCUSDT, ETHUSDT)',
+                    'CoinGecko IDs (e.g., bitcoin, ethereum)'
+                ]
+            });
+        }
+        res.status(500).json({ error: 'Failed to fetch market data', message: error instanceof Error ? error.message : 'Unknown error' });
     }
 });
 export default router;

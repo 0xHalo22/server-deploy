@@ -44,9 +44,18 @@ const SYMBOL_TO_COINGECKO_ID = {
     'DAI': 'dai',
 };
 // Helper function to get CoinGecko ID from symbol
-function getCoinGeckoId(symbol) {
+export function getCoinGeckoId(symbol) {
+    // Check if the symbol is already a CoinGecko ID (like "bitcoin")
+    const coinGeckoIds = Object.values(SYMBOL_TO_COINGECKO_ID);
+    if (coinGeckoIds.includes(symbol.toLowerCase())) {
+        return symbol.toLowerCase();
+    }
+    // Check if it's a direct match with a symbol
+    if (SYMBOL_TO_COINGECKO_ID[symbol]) {
+        return SYMBOL_TO_COINGECKO_ID[symbol];
+    }
     // Extract base asset from trading pair (e.g., BTCUSDT -> BTC)
-    const baseAsset = symbol.replace(/USDT$|BUSD$|USD$|USDC$/, '');
+    const baseAsset = symbol.replace(/USDT$|BUSD$|USD$|USDC$|DAI$/, '');
     return SYMBOL_TO_COINGECKO_ID[baseAsset] || null;
 }
 // Simple in-memory cache for CoinGecko responses
@@ -57,7 +66,7 @@ async function fetchCoinGeckoKlines(symbol, interval, limit = 1000) {
     try {
         const coinId = getCoinGeckoId(symbol);
         if (!coinId) {
-            throw new Error(`Unsupported symbol: ${symbol}`);
+            throw new Error(`Unsupported symbol: ${symbol}. Please use a trading pair format (e.g., BTCUSDT) or a valid CoinGecko ID.`);
         }
         const days = COINGECKO_INTERVALS[interval] || 1;
         // Create cache key

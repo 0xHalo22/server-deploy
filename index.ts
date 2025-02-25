@@ -53,12 +53,28 @@ const corsOptions = {
 };
 
 const io = new Server(httpServer, {
-  cors: corsOptions
+  cors: corsOptions,
+  path: '/socket.io',
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Add a simple route to help with debugging WebSocket connections
+app.get('/socket-status', (req, res) => {
+  const status = {
+    server: 'online',
+    socketServer: io ? 'initialized' : 'not initialized',
+    connections: Object.keys(io.sockets.sockets).length,
+    timestamp: Date.now()
+  };
+  res.json(status);
+});
 
 // Routes
 app.use('/health', healthRouter);
