@@ -2,8 +2,12 @@ import express from 'express';
 
 const router = express.Router();
 
-router.get('/', (_req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+router.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'solana-market-data',
+    timestamp: Date.now()
+  });
 });
 
 export default router; 

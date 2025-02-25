@@ -1,54 +1,41 @@
-import { Socket } from 'socket.io';
-
-export type DataSource = 'binance' | 'dexscreener' | 'coingecko';
-
+// Market data types
 export interface MarketData {
-  symbol: string;
   timestamp: number;
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
-  resolution: string;
-  source?: DataSource;
-}
-
-export interface MarketDataQuery {
   symbol: string;
   resolution: string;
-  from?: number;
-  to?: number;
-  source?: DataSource;
 }
 
+export interface MarketDataResponse {
+  symbol: string;
+  interval: string;
+  data: MarketData[];
+}
+
+// Birdseye API response types
+export interface BirdseyeOHLCVResponse {
+  success: boolean;
+  data: {
+    items: BirdseyeOHLCVData[];
+  };
+}
+
+export interface BirdseyeOHLCVData {
+  unixTime: number;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+}
+
+// Subscription types
 export interface MarketDataSubscription {
-  socket: Socket;
   symbol: string;
   resolution: string;
   callback: (data: MarketData) => void;
-}
-
-export interface SocketEvents {
-  'market:subscribe': (data: { symbol: string; resolution: string }) => void;
-  'market:unsubscribe': (data: { symbol: string }) => void;
-  'market:data': (data: MarketData) => void;
-}
-
-export interface ServerToClientEvents {
-  'market-update': (data: {
-    symbol: string;
-    timestamp: number;
-    price: number;
-  }) => void;
-}
-
-export interface ClientToServerEvents {
-  subscribe: (data: MarketDataSubscription) => void;
-  unsubscribe: (data: MarketDataSubscription) => void;
-}
-
-export type MarketDataSocket = Socket<
-  ClientToServerEvents,
-  ServerToClientEvents
->; 
+} 
