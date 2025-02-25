@@ -3,7 +3,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { MarketData, SocketEvents } from './types.js';
-import { addSubscription, removeSubscription } from './lib/market-data.js';
+import { addSubscription, removeSubscription, getCoinGeckoId } from './lib/market-data.js';
 
 import healthRouter from './routes/health.js';
 import marketDataRouter from './routes/market-data.js';
@@ -50,8 +50,35 @@ const PROXY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // Add a route for CoinGecko proxy with improved caching and rate limit handling
 app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
   try {
-    const endpoint = req.params.endpoint;
-    const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
+    let endpoint = req.params.endpoint;
+    const queryParams = req.query as Record<string, string>;
+    
+    // Handle symbol conversion for specific endpoints
+    if (endpoint.includes('coins/') && !endpoint.includes('list') && !endpoint.includes('markets')) {
+      // Extract the coin ID from the endpoint (e.g., coins/bitcoin/market_chart)
+      const parts = endpoint.split('/');
+      const coinIdIndex = parts.indexOf('coins') + 1;
+      
+      if (coinIdIndex < parts.length) {
+        const originalCoinId = parts[coinIdIndex];
+        
+        // Check if this looks like a trading pair (e.g., BTCUSDT)
+        if (/^[A-Z0-9]{2,10}(USDT|BUSD|USD|USDC|DAI)$/.test(originalCoinId)) {
+          // Try to convert it to a CoinGecko ID
+          const coinId = getCoinGeckoId(originalCoinId);
+          
+          if (coinId && coinId !== originalCoinId) {
+            // Replace the coin ID in the endpoint
+            parts[coinIdIndex] = coinId;
+            const newEndpoint = parts.join('/');
+            console.log(`Converted endpoint from ${endpoint} to ${newEndpoint}`);
+            endpoint = newEndpoint;
+          }
+        }
+      }
+    }
+    
+    const queryString = new URLSearchParams(queryParams).toString();
     const url = `https://api.coingecko.com/api/v3/${endpoint}${queryString ? `?${queryString}` : ''}`;
     
     // Create cache key from full URL
