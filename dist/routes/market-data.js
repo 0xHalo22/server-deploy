@@ -1,17 +1,17 @@
 import express from 'express';
-import { fetchCoinGeckoKlines } from '../lib/market-data.js';
+import { fetchBirdseyeKlines } from '../lib/market-data.js';
 const router = express.Router();
-// GET /market-data?symbol=BTCUSDT&resolution=1m&limit=1000
+// GET /market-data?symbol=SOL&resolution=1m&limit=1000
 router.get('/', async (req, res) => {
     try {
         const { symbol, resolution, limit } = req.query;
         if (!symbol || !resolution) {
             return res.status(400).json({
                 error: 'Missing required parameters: symbol, resolution',
-                message: 'Please provide both symbol (e.g., BTCUSDT) and resolution (e.g., 1m, 1h, 1d)'
+                message: 'Please provide both symbol (e.g., SOL, BONK) and resolution (e.g., 1m, 1h, 1d)'
             });
         }
-        const data = await fetchCoinGeckoKlines(symbol, resolution, limit ? parseInt(limit) : 1000);
+        const data = await fetchBirdseyeKlines(symbol, resolution, limit ? parseInt(limit) : 1000);
         // Transform data for lightweight-charts
         const transformedData = {
             candles: data.map((d) => ({
@@ -38,8 +38,8 @@ router.get('/', async (req, res) => {
             return res.status(400).json({
                 error: error.message,
                 supportedFormats: [
-                    'Trading pairs (e.g., BTCUSDT, ETHUSDT)',
-                    'CoinGecko IDs (e.g., bitcoin, ethereum)'
+                    'Solana token symbols (e.g., SOL, BONK, JUP)',
+                    'Solana token addresses (e.g., So11111111111111111111111111111111111111112)'
                 ]
             });
         }

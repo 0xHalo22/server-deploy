@@ -3,7 +3,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { MarketData, SocketEvents } from './types.js';
-import { addSubscription, removeSubscription, getCoinGeckoId } from './lib/market-data.js';
+import { addSubscription, removeSubscription, getTokenAddress } from './lib/market-data.js';
 
 import healthRouter from './routes/health.js';
 import marketDataRouter from './routes/market-data.js';
@@ -80,54 +80,29 @@ app.get('/socket-status', (req, res) => {
 app.use('/health', healthRouter);
 app.use('/api/market-data', marketDataRouter);
 
-// Simple in-memory cache for CoinGecko proxy
+// Simple in-memory cache for Birdseye proxy
 const proxyCache: Record<string, { data: any; timestamp: number }> = {};
 const PROXY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Add a route for CoinGecko proxy with improved caching and rate limit handling
-app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
+// Add a route for Birdseye proxy with improved caching and rate limit handling
+app.get('/api/birdseye/:endpoint(*)', async (req, res) => {
   try {
-    let endpoint = req.params.endpoint;
+    const endpoint = req.params.endpoint;
     const queryParams = req.query as Record<string, string>;
     
-    // Handle symbol conversion for specific endpoints
-    if (endpoint.includes('coins/') && !endpoint.includes('list') && !endpoint.includes('markets')) {
-      // Extract the coin ID from the endpoint (e.g., coins/bitcoin/market_chart)
-      const parts = endpoint.split('/');
-      const coinIdIndex = parts.indexOf('coins') + 1;
-      
-      if (coinIdIndex < parts.length) {
-        const originalCoinId = parts[coinIdIndex];
-        
-        // Check if this looks like a trading pair (e.g., BTCUSDT)
-        if (/^[A-Z0-9]{2,10}(USDT|BUSD|USD|USDC|DAI)$/.test(originalCoinId)) {
-          // Try to convert it to a CoinGecko ID
-          const coinId = getCoinGeckoId(originalCoinId);
-          
-          if (coinId && coinId !== originalCoinId) {
-            // Replace the coin ID in the endpoint
-            parts[coinIdIndex] = coinId;
-            const newEndpoint = parts.join('/');
-            console.log(`Converted endpoint from ${endpoint} to ${newEndpoint}`);
-            endpoint = newEndpoint;
-          }
-        }
-      }
-    }
-    
     const queryString = new URLSearchParams(queryParams).toString();
-    const url = `https://api.coingecko.com/api/v3/${endpoint}${queryString ? `?${queryString}` : ''}`;
+    const url = `https://public-api.birdeye.so/${endpoint}${queryString ? `?${queryString}` : ''}`;
     
     // Create cache key from full URL
     const cacheKey = url;
     
     // Check cache first
     if (proxyCache[cacheKey] && (Date.now() - proxyCache[cacheKey].timestamp) < PROXY_CACHE_TTL) {
-      console.log(`Using cached data for CoinGecko proxy: ${endpoint}`);
+      console.log(`Using cached data for Birdseye proxy: ${endpoint}`);
       return res.json(proxyCache[cacheKey].data);
     }
     
-    console.log(`Proxying request to CoinGecko: ${url}`);
+    console.log(`Proxying request to Birdseye: ${url}`);
     
     // Implement retry logic with exponential backoff
     let retries = 3;
@@ -137,6 +112,7 @@ app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
       try {
         const response = await fetch(url, {
           headers: {
+            'X-API-KEY': process.env.BIRDSEYE_API_KEY || '',
             'Accept': 'application/json',
           }
         });
@@ -144,7 +120,7 @@ app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
         // Handle rate limiting specifically
         if (response.status === 429) {
           const retryAfter = parseInt(response.headers.get('Retry-After') || '60', 10);
-          console.warn(`CoinGecko rate limit hit, retrying after ${retryAfter} seconds`);
+          console.warn(`Birdseye rate limit hit, retrying after ${retryAfter} seconds`);
           
           if (attempt < retries - 1) {
             await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
@@ -160,7 +136,7 @@ app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
         }
         
         if (!response.ok) {
-          throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+          throw new Error(`Birdseye API error: ${response.status} ${response.statusText}`);
         }
         
         const data = await response.json();
@@ -174,7 +150,7 @@ app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
         return res.json(data);
       } catch (error) {
         lastError = error;
-        console.error(`CoinGecko proxy attempt ${attempt + 1} failed:`, error);
+        console.error(`Birdseye proxy attempt ${attempt + 1} failed:`, error);
         
         if (attempt < retries - 1) {
           // Exponential backoff
@@ -190,10 +166,59 @@ app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
       return res.json(proxyCache[cacheKey].data);
     }
     
-    throw lastError || new Error('Failed to fetch data from CoinGecko');
+    throw lastError || new Error('Failed to fetch data from Birdseye');
   } catch (error) {
-    console.error('Error proxying to CoinGecko:', error);
-    res.status(500).json({ error: 'Failed to fetch data from CoinGecko' });
+    console.error('Error proxying to Birdseye:', error);
+    res.status(500).json({ error: 'Failed to fetch data from Birdseye' });
+  }
+});
+
+// Add a new route for token search to support searching for tickers directly from chart windows
+app.get('/api/token-search', async (req, res) => {
+  try {
+    const { query } = req.query;
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Missing query parameter' });
+    }
+    
+    // Create cache key
+    const cacheKey = `token-search-${query}`;
+    
+    // Check cache first
+    if (proxyCache[cacheKey] && (Date.now() - proxyCache[cacheKey].timestamp) < PROXY_CACHE_TTL) {
+      console.log(`Using cached data for token search: ${query}`);
+      return res.json(proxyCache[cacheKey].data);
+    }
+    
+    // Construct the Birdseye API URL for token search
+    const url = `https://public-api.birdeye.so/defi/v3/token/search?query=${query}`;
+    
+    console.log(`Searching tokens via Birdseye: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'X-API-KEY': process.env.BIRDSEYE_API_KEY || '',
+        'Accept': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Birdseye API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Update cache
+    proxyCache[cacheKey] = {
+      data,
+      timestamp: Date.now()
+    };
+    
+    return res.json(data);
+  } catch (error) {
+    console.error('Error searching tokens:', error);
+    res.status(500).json({ error: 'Failed to search tokens', message: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 

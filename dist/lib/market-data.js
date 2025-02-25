@@ -1,76 +1,50 @@
-// CoinGecko interval mapping (days parameter)
-const COINGECKO_INTERVALS = {
-    '1m': 1, // 1 day with minute data
-    '5m': 1, // 1 day with 5-minute data
-    '15m': 1, // 1 day with 15-minute data
-    '1h': 7, // 7 days with hourly data
-    '4h': 30, // 30 days with 4-hour data
-    '1d': 90, // 90 days with daily data
+// Birdseye interval mapping
+const BIRDSEYE_INTERVALS = {
+    '1m': '1M',
+    '5m': '5M',
+    '15m': '15M',
+    '1h': '1H',
+    '4h': '4H',
+    '1d': '1D',
+    '1w': '1W',
 };
-// Map common trading symbols to CoinGecko IDs
-const SYMBOL_TO_COINGECKO_ID = {
-    'BTC': 'bitcoin',
-    'ETH': 'ethereum',
-    'SOL': 'solana',
-    'DOGE': 'dogecoin',
-    'XRP': 'ripple',
-    'ADA': 'cardano',
-    'DOT': 'polkadot',
-    'AVAX': 'avalanche-2',
-    'MATIC': 'matic-network',
-    'LINK': 'chainlink',
-    'UNI': 'uniswap',
-    'AAVE': 'aave',
-    'ATOM': 'cosmos',
-    'LTC': 'litecoin',
-    'BCH': 'bitcoin-cash',
-    'ALGO': 'algorand',
-    'FIL': 'filecoin',
-    'XLM': 'stellar',
-    'VET': 'vechain',
-    'THETA': 'theta-token',
-    'EOS': 'eos',
-    'TRX': 'tron',
-    'XMR': 'monero',
-    'NEO': 'neo',
-    'DASH': 'dash',
-    'ZEC': 'zcash',
-    'ETC': 'ethereum-classic',
-    'XTZ': 'tezos',
-    'BNB': 'binancecoin',
-    'USDT': 'tether',
-    'USDC': 'usd-coin',
-    'BUSD': 'binance-usd',
-    'DAI': 'dai',
+// Map common trading symbols to Solana token addresses
+const SYMBOL_TO_ADDRESS = {
+    'SOL': 'So11111111111111111111111111111111111111112', // Native SOL
+    'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+    'BONK': 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', // BONK
+    'JTO': 'jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL', // Jito
+    'JUP': 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', // Jupiter
+    'PYTH': 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3', // Pyth
+    'RNDR': 'rndrizKT3MK1iimdxRdWabcF7Zg7AR5T6rJJaLvQKkJ', // Render
+    'MSOL': 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So', // Marinade Staked SOL
+    'RAY': '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', // Raydium
+    'ORCA': 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE', // Orca
 };
-// Helper function to get CoinGecko ID from symbol
-export function getCoinGeckoId(symbol) {
-    // Check if the symbol is already a CoinGecko ID (like "bitcoin")
-    const coinGeckoIds = Object.values(SYMBOL_TO_COINGECKO_ID);
-    if (coinGeckoIds.includes(symbol.toLowerCase())) {
-        return symbol.toLowerCase();
+// Helper function to get token address from symbol
+export function getTokenAddress(symbol) {
+    // If it's already an address, return it
+    if (symbol.length === 44 || symbol.length === 43) {
+        return symbol;
     }
     // Check if it's a direct match with a symbol
-    if (SYMBOL_TO_COINGECKO_ID[symbol]) {
-        return SYMBOL_TO_COINGECKO_ID[symbol];
+    if (SYMBOL_TO_ADDRESS[symbol]) {
+        return SYMBOL_TO_ADDRESS[symbol];
     }
-    // Extract base asset from trading pair (e.g., BTCUSDT -> BTC)
-    const baseAsset = symbol.replace(/USDT$|BUSD$|USD$|USDC$|DAI$/, '');
-    return SYMBOL_TO_COINGECKO_ID[baseAsset] || null;
+    return null;
 }
-// Simple in-memory cache for CoinGecko responses
+// Simple in-memory cache for Birdseye responses
 const cache = {};
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-// Fetch historical data from CoinGecko with improved error handling and caching
-async function fetchCoinGeckoKlines(symbol, interval, limit = 1000) {
+// Fetch historical data from Birdseye with improved error handling and caching
+async function fetchBirdseyeKlines(symbol, interval, limit = 1000) {
     try {
-        const coinId = getCoinGeckoId(symbol);
-        if (!coinId) {
-            throw new Error(`Unsupported symbol: ${symbol}. Please use a trading pair format (e.g., BTCUSDT) or a valid CoinGecko ID.`);
+        const tokenAddress = getTokenAddress(symbol);
+        if (!tokenAddress) {
+            throw new Error(`Unsupported symbol: ${symbol}. Please use a valid token symbol or address.`);
         }
-        const days = COINGECKO_INTERVALS[interval] || 1;
         // Create cache key
-        const cacheKey = `${coinId}-${days}-${interval}`;
+        const cacheKey = `${tokenAddress}-${interval}-${limit}`;
         // Check cache first
         if (cache[cacheKey] && (Date.now() - cache[cacheKey].timestamp) < CACHE_TTL) {
             console.log(`Using cached data for ${symbol} (${interval})`);
@@ -81,31 +55,40 @@ async function fetchCoinGeckoKlines(symbol, interval, limit = 1000) {
         let lastError;
         for (let attempt = 0; attempt < retries; attempt++) {
             try {
-                const response = await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`);
+                // Convert interval to uppercase format for Birdseye API
+                const birdseyeInterval = BIRDSEYE_INTERVALS[interval] || interval.toUpperCase();
+                // Construct the Birdseye API URL - using v3 token market-data endpoint
+                const birdseyeUrl = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${tokenAddress}&interval=${birdseyeInterval}&limit=${limit}`;
+                console.log(`Fetching from Birdseye: ${birdseyeUrl}`);
+                const response = await fetch(birdseyeUrl, {
+                    headers: {
+                        'X-API-KEY': process.env.BIRDSEYE_API_KEY || '',
+                        'Accept': 'application/json',
+                    }
+                });
                 // Handle rate limiting specifically
                 if (response.status === 429) {
                     const retryAfter = parseInt(response.headers.get('Retry-After') || '60', 10);
-                    console.warn(`CoinGecko rate limit hit, retrying after ${retryAfter} seconds`);
+                    console.warn(`Birdseye rate limit hit, retrying after ${retryAfter} seconds`);
                     await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
                     continue;
                 }
                 if (!response.ok) {
-                    throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+                    throw new Error(`Birdseye API error: ${response.status} ${response.statusText}`);
                 }
                 const data = await response.json();
-                if (!Array.isArray(data) || data.length === 0) {
-                    throw new Error('Empty or invalid response from CoinGecko');
+                if (!data.data || !Array.isArray(data.data.ohlcv)) {
+                    throw new Error('Empty or invalid response from Birdseye');
                 }
-                // Transform and cache the data
-                const transformedData = data.map((kline) => ({
+                // Transform the data to our standard format
+                const transformedData = data.data.ohlcv.map((item) => ({
                     symbol,
-                    timestamp: kline[0], // Open time
-                    open: kline[1],
-                    high: kline[2],
-                    low: kline[3],
-                    close: kline[4],
-                    // Calculate a fake volume based on price range
-                    volume: (kline[2] - kline[3]) * (kline[1] + kline[4]) / 2 * 100,
+                    timestamp: item.unixTime * 1000, // Convert to milliseconds
+                    open: parseFloat(item.open),
+                    high: parseFloat(item.high),
+                    low: parseFloat(item.low),
+                    close: parseFloat(item.close),
+                    volume: parseFloat(item.volume),
                     resolution: interval
                 }));
                 // Update cache
@@ -117,7 +100,7 @@ async function fetchCoinGeckoKlines(symbol, interval, limit = 1000) {
             }
             catch (error) {
                 lastError = error;
-                console.error(`CoinGecko attempt ${attempt + 1} failed:`, error);
+                console.error(`Birdseye attempt ${attempt + 1} failed:`, error);
                 if (attempt < retries - 1) {
                     // Exponential backoff
                     const delay = Math.pow(2, attempt) * 1000;
@@ -130,19 +113,19 @@ async function fetchCoinGeckoKlines(symbol, interval, limit = 1000) {
             console.warn(`Using expired cache as fallback for ${symbol}`);
             return cache[cacheKey].data;
         }
-        throw lastError || new Error('Failed to fetch data from CoinGecko');
+        throw lastError || new Error('Failed to fetch data from Birdseye');
     }
     catch (error) {
-        console.error('Error fetching from CoinGecko:', error);
+        console.error('Error fetching from Birdseye:', error);
         throw error;
     }
 }
 // WebSocket connection for real-time updates
-// Note: CoinGecko doesn't provide WebSocket, so we'll use polling instead
+// Note: Birdseye doesn't provide WebSocket, so we'll use polling instead
 let updateInterval = null;
 const activeSymbols = new Set();
 const subscriptions = new Map();
-// Setup polling for real-time updates (CoinGecko doesn't have WebSockets)
+// Setup polling for real-time updates (Birdseye doesn't have WebSockets)
 function setupPolling() {
     if (updateInterval) {
         clearInterval(updateInterval);
@@ -154,7 +137,7 @@ function setupPolling() {
     updateInterval = setInterval(async () => {
         for (const symbol of symbols) {
             try {
-                const data = await fetchCoinGeckoKlines(symbol, '1m', 1);
+                const data = await fetchBirdseyeKlines(symbol, '1m', 1);
                 if (data.length > 0) {
                     emitMarketData(symbol, data[data.length - 1]);
                 }
@@ -208,4 +191,4 @@ function emitMarketData(symbol, data) {
         }
     });
 }
-export { fetchCoinGeckoKlines };
+export { fetchBirdseyeKlines };

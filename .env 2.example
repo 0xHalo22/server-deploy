@@ -1,0 +1,9 @@
+# Server configuration
+PORT=8080
+NODE_ENV=development
+
+# Birdseye API configuration
+BIRDSEYE_API_KEY=your_birdseye_api_key_here
+
+# CORS configuration (comma-separated list of allowed origins)
+ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com 

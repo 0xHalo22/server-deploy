@@ -1,6 +1,6 @@
 import { Socket } from 'socket.io';
 
-export type DataSource = 'binance' | 'dexscreener' | 'coingecko';
+export type DataSource = 'birdseye';
 
 export interface MarketData {
   symbol: string;
