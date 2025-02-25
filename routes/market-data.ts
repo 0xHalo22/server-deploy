@@ -1,41 +1,42 @@
-import { Router } from 'express';
-import { MarketDataQuery } from '../types';
-import { fetchBinanceKlines } from '../lib/market-data';
+import express from 'express';
+import { fetchCoinGeckoKlines } from '../lib/market-data.js';
 
-const router = Router();
+const router = express.Router();
 
-// GET /api/market-data?symbol=BTCUSDT&resolution=1m
+// GET /market-data?symbol=BTCUSDT&resolution=1m&limit=1000
 router.get('/', async (req, res) => {
   try {
-    const { symbol, resolution } = req.query as unknown as MarketDataQuery;
+    const { symbol, resolution, limit } = req.query;
     
     if (!symbol || !resolution) {
-      return res.status(400).json({ 
-        error: 'Missing required parameters: symbol and resolution' 
-      });
+      return res.status(400).json({ error: 'Missing required parameters: symbol, resolution' });
     }
-
-    const data = await fetchBinanceKlines(symbol, resolution);
     
-    // Transform data for lightweight-charts format
-    const candles = data.map(kline => ({
-      time: kline.timestamp / 1000, // Convert to seconds for lightweight-charts
-      open: kline.open,
-      high: kline.high,
-      low: kline.low,
-      close: kline.close
-    }));
-
-    const volume = data.map(kline => ({
-      time: kline.timestamp / 1000,
-      value: kline.volume,
-      color: kline.close >= kline.open ? '#26a69a' : '#ef5350'
-    }));
-
-    res.json({ candles, volume });
+    const data = await fetchCoinGeckoKlines(
+      symbol as string, 
+      resolution as string, 
+      limit ? parseInt(limit as string) : 1000
+    );
+    
+    // Transform data for lightweight-charts
+    const transformedData = {
+      candles: data.map((d: any) => ({
+        time: d.time,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close
+      })),
+      volumes: data.map((d: any) => ({
+        time: d.time,
+        value: d.volume
+      }))
+    };
+    
+    res.json(transformedData);
   } catch (error) {
-    console.error('Error in market data route:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching market data:', error);
+    res.status(500).json({ error: 'Failed to fetch market data' });
   }
 });
 

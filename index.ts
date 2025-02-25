@@ -2,11 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { MarketData, SocketEvents } from './types';
-import { addSubscription, removeSubscription } from './lib/market-data';
+import { MarketData, SocketEvents } from './types.js';
+import { addSubscription, removeSubscription } from './lib/market-data.js';
 
-import healthRouter from './routes/health';
-import marketDataRouter from './routes/market-data';
+import healthRouter from './routes/health.js';
+import marketDataRouter from './routes/market-data.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -42,6 +42,33 @@ app.use(express.json());
 // Routes
 app.use('/health', healthRouter);
 app.use('/api/market-data', marketDataRouter);
+
+// Add a route for CoinGecko proxy
+app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
+  try {
+    const endpoint = req.params.endpoint;
+    const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
+    const url = `https://api.coingecko.com/api/v3/${endpoint}${queryString ? `?${queryString}` : ''}`;
+    
+    console.log(`Proxying request to CoinGecko: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error proxying to CoinGecko:', error);
+    res.status(500).json({ error: 'Failed to fetch data from CoinGecko' });
+  }
+});
 
 // WebSocket setup
 io.on('connection', (socket) => {

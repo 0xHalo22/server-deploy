@@ -1,5 +1,7 @@
 import { Socket } from 'socket.io';
 
+export type DataSource = 'binance' | 'dexscreener' | 'coingecko';
+
 export interface MarketData {
   symbol: string;
   timestamp: number;
@@ -9,6 +11,7 @@ export interface MarketData {
   close: number;
   volume: number;
   resolution: string;
+  source?: DataSource;
 }
 
 export interface MarketDataQuery {
@@ -16,6 +19,7 @@ export interface MarketDataQuery {
   resolution: string;
   from?: number;
   to?: number;
+  source?: DataSource;
 }
 
 export interface MarketDataSubscription {

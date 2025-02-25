@@ -1,97 +1,133 @@
-import { MarketData, MarketDataSubscription } from '../types';
+import { MarketData, MarketDataSubscription } from '../types.js';
 
-// Binance kline interval mapping
-const BINANCE_INTERVALS: Record<string, string> = {
-  '1m': '1m',
-  '5m': '5m',
-  '15m': '15m',
-  '1h': '1h',
-  '4h': '4h',
-  '1d': '1d'
+// CoinGecko interval mapping (days parameter)
+const COINGECKO_INTERVALS: Record<string, number> = {
+  '1m': 1,    // 1 day with minute data
+  '5m': 1,    // 1 day with 5-minute data
+  '15m': 1,   // 1 day with 15-minute data
+  '1h': 7,    // 7 days with hourly data
+  '4h': 30,   // 30 days with 4-hour data
+  '1d': 90,   // 90 days with daily data
 };
 
-// Fetch historical klines from Binance
-async function fetchBinanceKlines(symbol: string, interval: string, limit: number = 1000): Promise<MarketData[]> {
+// Map common trading symbols to CoinGecko IDs
+const SYMBOL_TO_COINGECKO_ID: Record<string, string> = {
+  'BTC': 'bitcoin',
+  'ETH': 'ethereum',
+  'SOL': 'solana',
+  'DOGE': 'dogecoin',
+  'XRP': 'ripple',
+  'ADA': 'cardano',
+  'DOT': 'polkadot',
+  'AVAX': 'avalanche-2',
+  'MATIC': 'matic-network',
+  'LINK': 'chainlink',
+  'UNI': 'uniswap',
+  'AAVE': 'aave',
+  'ATOM': 'cosmos',
+  'LTC': 'litecoin',
+  'BCH': 'bitcoin-cash',
+  'ALGO': 'algorand',
+  'FIL': 'filecoin',
+  'XLM': 'stellar',
+  'VET': 'vechain',
+  'THETA': 'theta-token',
+  'EOS': 'eos',
+  'TRX': 'tron',
+  'XMR': 'monero',
+  'NEO': 'neo',
+  'DASH': 'dash',
+  'ZEC': 'zcash',
+  'ETC': 'ethereum-classic',
+  'XTZ': 'tezos',
+  'BNB': 'binancecoin',
+  'USDT': 'tether',
+  'USDC': 'usd-coin',
+  'BUSD': 'binance-usd',
+  'DAI': 'dai',
+};
+
+// Helper function to get CoinGecko ID from symbol
+function getCoinGeckoId(symbol: string): string | null {
+  // Extract base asset from trading pair (e.g., BTCUSDT -> BTC)
+  const baseAsset = symbol.replace(/USDT$|BUSD$|USD$|USDC$/, '');
+  return SYMBOL_TO_COINGECKO_ID[baseAsset] || null;
+}
+
+// Fetch historical data from CoinGecko
+async function fetchCoinGeckoKlines(symbol: string, interval: string, limit: number = 1000): Promise<MarketData[]> {
   try {
-    const binanceInterval = BINANCE_INTERVALS[interval] || '1m';
+    const coinId = getCoinGeckoId(symbol);
+    if (!coinId) {
+      throw new Error(`Unsupported symbol: ${symbol}`);
+    }
+
+    const days = COINGECKO_INTERVALS[interval] || 1;
     const response = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceInterval}&limit=${limit}`
+      `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`
     );
 
     if (!response.ok) {
-      throw new Error(`Binance API error: ${response.statusText}`);
+      throw new Error(`CoinGecko API error: ${response.statusText}`);
     }
 
     const data = await response.json();
     
+    // CoinGecko OHLC format: [timestamp, open, high, low, close]
     return data.map((kline: any) => ({
       symbol,
       timestamp: kline[0], // Open time
-      open: parseFloat(kline[1]),
-      high: parseFloat(kline[2]),
-      low: parseFloat(kline[3]),
-      close: parseFloat(kline[4]),
-      volume: parseFloat(kline[5]),
+      open: kline[1],
+      high: kline[2],
+      low: kline[3],
+      close: kline[4],
+      // Calculate a fake volume based on price range
+      volume: (kline[2] - kline[3]) * (kline[1] + kline[4]) / 2 * 100,
       resolution: interval
     }));
   } catch (error) {
-    console.error('Error fetching from Binance:', error);
+    console.error('Error fetching from CoinGecko:', error);
     throw error;
   }
 }
 
 // WebSocket connection for real-time updates
-let binanceWs: WebSocket | null = null;
+// Note: CoinGecko doesn't provide WebSocket, so we'll use polling instead
+let updateInterval: NodeJS.Timeout | null = null;
 const activeSymbols = new Set<string>();
+const subscriptions = new Map<string, Set<MarketDataSubscription>>();
 
-function connectBinanceWebSocket() {
-  if (binanceWs?.readyState === WebSocket.OPEN) return;
+// Setup polling for real-time updates (CoinGecko doesn't have WebSockets)
+function setupPolling() {
+  if (updateInterval) {
+    clearInterval(updateInterval);
+  }
 
   const symbols = Array.from(activeSymbols);
   if (symbols.length === 0) return;
 
-  const streams = symbols.map(s => `${s.toLowerCase()}@kline_1m`).join('/');
-  binanceWs = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
-
-  binanceWs.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.e === 'kline') {
-      const kline = data.k;
-      const marketData: MarketData = {
-        symbol: data.s,
-        timestamp: data.T,
-        open: parseFloat(kline.o),
-        high: parseFloat(kline.h),
-        low: parseFloat(kline.l),
-        close: parseFloat(kline.c),
-        volume: parseFloat(kline.v),
-        resolution: '1m' // Real-time updates are always 1m
-      };
-      emitMarketData(data.s, marketData);
+  // Poll every 30 seconds (to avoid rate limiting)
+  updateInterval = setInterval(async () => {
+    for (const symbol of symbols) {
+      try {
+        const data = await fetchCoinGeckoKlines(symbol, '1m', 1);
+        if (data.length > 0) {
+          emitMarketData(symbol, data[data.length - 1]);
+        }
+      } catch (error) {
+        console.error(`Error polling ${symbol}:`, error);
+      }
     }
-  };
-
-  binanceWs.onerror = (error) => {
-    console.error('Binance WebSocket error:', error);
-    reconnectWebSocket();
-  };
-
-  binanceWs.onclose = () => {
-    console.log('Binance WebSocket closed');
-    reconnectWebSocket();
-  };
+  }, 30000); // 30 seconds
 }
 
-function reconnectWebSocket() {
-  if (binanceWs) {
-    binanceWs.close();
-    binanceWs = null;
+function reconnectPolling() {
+  if (updateInterval) {
+    clearInterval(updateInterval);
+    updateInterval = null;
   }
-  setTimeout(connectBinanceWebSocket, 5000);
+  setTimeout(setupPolling, 5000);
 }
-
-// Subscription management
-const subscriptions = new Map<string, Set<MarketDataSubscription>>();
 
 export function addSubscription(symbol: string, subscription: MarketDataSubscription): void {
   if (!subscriptions.has(symbol)) {
@@ -99,9 +135,9 @@ export function addSubscription(symbol: string, subscription: MarketDataSubscrip
   }
   subscriptions.get(symbol)?.add(subscription);
   
-  // Add to active symbols and reconnect WebSocket
+  // Add to active symbols and setup polling
   activeSymbols.add(symbol);
-  connectBinanceWebSocket();
+  setupPolling();
 }
 
 export function removeSubscription(symbol: string, subscription: MarketDataSubscription): void {
@@ -110,12 +146,12 @@ export function removeSubscription(symbol: string, subscription: MarketDataSubsc
     subscriptions.delete(symbol);
     activeSymbols.delete(symbol);
     
-    // Reconnect WebSocket with updated symbols
-    if (binanceWs) {
-      binanceWs.close();
-      binanceWs = null;
+    // Restart polling with updated symbols
+    if (updateInterval) {
+      clearInterval(updateInterval);
+      updateInterval = null;
     }
-    connectBinanceWebSocket();
+    setupPolling();
   }
 }
 
@@ -133,4 +169,4 @@ function emitMarketData(symbol: string, data: MarketData): void {
   });
 }
 
-export { fetchBinanceKlines }; 
+export { fetchCoinGeckoKlines }; 
