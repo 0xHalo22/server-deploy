@@ -1,4 +1,4 @@
-import { MarketData, MarketDataSubscription } from '../types.js';
+import { MarketData, MarketDataSubscription } from '../types';
 
 // CoinGecko interval mapping (days parameter)
 const COINGECKO_INTERVALS: Record<string, number> = {

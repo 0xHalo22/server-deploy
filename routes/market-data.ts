@@ -1,5 +1,5 @@
 import express from 'express';
-import { fetchCoinGeckoKlines } from '../lib/market-data.js';
+import { fetchCoinGeckoKlines } from '../lib/market-data';
 
 const router = express.Router();
 

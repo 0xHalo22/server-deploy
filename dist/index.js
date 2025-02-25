@@ -1,12 +1,17 @@
-import express from 'express';
-import cors from 'cors';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import { addSubscription, removeSubscription } from './lib/market-data.js';
-import healthRouter from './routes/health.js';
-import marketDataRouter from './routes/market-data.js';
-const app = express();
-const httpServer = createServer(app);
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
+const http_1 = require("http");
+const socket_io_1 = require("socket.io");
+const market_data_js_1 = require("./lib/market-data.js");
+const health_js_1 = __importDefault(require("./routes/health.js"));
+const market_data_js_2 = __importDefault(require("./routes/market-data.js"));
+const app = (0, express_1.default)();
+const httpServer = (0, http_1.createServer)(app);
 // Allow multiple origins for CORS
 const allowedOrigins = [
     'http://localhost:3000',
@@ -26,15 +31,15 @@ const corsOptions = {
     methods: ['GET', 'POST'],
     credentials: true
 };
-const io = new Server(httpServer, {
+const io = new socket_io_1.Server(httpServer, {
     cors: corsOptions
 });
 // Middleware
-app.use(cors(corsOptions));
-app.use(express.json());
+app.use((0, cors_1.default)(corsOptions));
+app.use(express_1.default.json());
 // Routes
-app.use('/health', healthRouter);
-app.use('/api/market-data', marketDataRouter);
+app.use('/health', health_js_1.default);
+app.use('/api/market-data', market_data_js_2.default);
 // Add a route for CoinGecko proxy
 app.get('/api/coingecko/:endpoint(*)', async (req, res) => {
     try {
@@ -71,12 +76,12 @@ io.on('connection', (socket) => {
                 socket.emit('market:data', data);
             }
         };
-        addSubscription(symbol, subscription);
+        (0, market_data_js_1.addSubscription)(symbol, subscription);
         socket.on('market:unsubscribe', () => {
-            removeSubscription(symbol, subscription);
+            (0, market_data_js_1.removeSubscription)(symbol, subscription);
         });
         socket.on('disconnect', () => {
-            removeSubscription(symbol, subscription);
+            (0, market_data_js_1.removeSubscription)(symbol, subscription);
         });
     });
 });

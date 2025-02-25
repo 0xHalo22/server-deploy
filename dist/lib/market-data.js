@@ -1,3 +1,8 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.addSubscription = addSubscription;
+exports.removeSubscription = removeSubscription;
+exports.fetchCoinGeckoKlines = fetchCoinGeckoKlines;
 // CoinGecko interval mapping (days parameter)
 const COINGECKO_INTERVALS = {
     '1m': 1, // 1 day with minute data
@@ -115,18 +120,20 @@ function reconnectPolling() {
     }
     setTimeout(setupPolling, 5000);
 }
-export function addSubscription(symbol, subscription) {
+function addSubscription(symbol, subscription) {
+    var _a;
     if (!subscriptions.has(symbol)) {
         subscriptions.set(symbol, new Set());
     }
-    subscriptions.get(symbol)?.add(subscription);
+    (_a = subscriptions.get(symbol)) === null || _a === void 0 ? void 0 : _a.add(subscription);
     // Add to active symbols and setup polling
     activeSymbols.add(symbol);
     setupPolling();
 }
-export function removeSubscription(symbol, subscription) {
-    subscriptions.get(symbol)?.delete(subscription);
-    if (subscriptions.get(symbol)?.size === 0) {
+function removeSubscription(symbol, subscription) {
+    var _a, _b;
+    (_a = subscriptions.get(symbol)) === null || _a === void 0 ? void 0 : _a.delete(subscription);
+    if (((_b = subscriptions.get(symbol)) === null || _b === void 0 ? void 0 : _b.size) === 0) {
         subscriptions.delete(symbol);
         activeSymbols.delete(symbol);
         // Restart polling with updated symbols
@@ -149,4 +156,3 @@ function emitMarketData(symbol, data) {
         }
     });
 }
-export { fetchCoinGeckoKlines };
