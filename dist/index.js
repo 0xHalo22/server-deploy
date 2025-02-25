@@ -162,7 +162,7 @@ app.get('/api/token-search', async (req, res) => {
             return res.json(proxyCache[cacheKey].data);
         }
         // Construct the Birdseye API URL for token search
-        const url = `https://public-api.birdeye.so/defi/v3/token/search?query=${query}`;
+        const url = `https://public-api.birdeye.so/public/search_token?query=${query}`;
         console.log(`Searching tokens via Birdseye: ${url}`);
         const response = await fetch(url, {
             headers: {
