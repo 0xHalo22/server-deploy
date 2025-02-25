@@ -14,21 +14,42 @@ const httpServer = createServer(app);
 // Allow multiple origins for CORS
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://hyperbore.vercel.app', // Add your Vercel deployment URL
+  'http://localhost:4000',
+  'https://hyperbore.vercel.app',
+  'https://hyperbore-terminal.vercel.app',
+  'https://hyperbore-market-data.fly.dev',
   process.env.CLIENT_URL,
-].filter(Boolean);
+].filter(Boolean) as string[];
 
 // Configure CORS for both Express and Socket.IO
 const corsOptions = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+  origin: function(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    
+    // In development, allow all origins
+    if (process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+      return;
+    }
+    
+    // In production, check against allowed origins
+    if (allowedOrigins.some(allowedOrigin => 
+        allowedOrigin === '*' || 
+        origin.startsWith(allowedOrigin) || 
+        allowedOrigin === origin)) {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked request from origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST'],
-  credentials: true
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+  maxAge: 86400 // 24 hours
 };
 
 const io = new Server(httpServer, {
