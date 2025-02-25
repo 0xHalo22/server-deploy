@@ -1,4 +1,4 @@
-import { MarketData, MarketDataSubscription } from '../types';
+import { MarketData, MarketDataSubscription } from '../types.js';
 
 // CoinGecko interval mapping (days parameter)
 const COINGECKO_INTERVALS: Record<string, number> = {
@@ -54,7 +54,11 @@ function getCoinGeckoId(symbol: string): string | null {
   return SYMBOL_TO_COINGECKO_ID[baseAsset] || null;
 }
 
-// Fetch historical data from CoinGecko
+// Simple in-memory cache for CoinGecko responses
+const cache: Record<string, { data: any; timestamp: number }> = {};
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Fetch historical data from CoinGecko with improved error handling and caching
 async function fetchCoinGeckoKlines(symbol: string, interval: string, limit: number = 1000): Promise<MarketData[]> {
   try {
     const coinId = getCoinGeckoId(symbol);
@@ -63,28 +67,83 @@ async function fetchCoinGeckoKlines(symbol: string, interval: string, limit: num
     }
 
     const days = COINGECKO_INTERVALS[interval] || 1;
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`
-    );
-
-    if (!response.ok) {
-      throw new Error(`CoinGecko API error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
     
-    // CoinGecko OHLC format: [timestamp, open, high, low, close]
-    return data.map((kline: any) => ({
-      symbol,
-      timestamp: kline[0], // Open time
-      open: kline[1],
-      high: kline[2],
-      low: kline[3],
-      close: kline[4],
-      // Calculate a fake volume based on price range
-      volume: (kline[2] - kline[3]) * (kline[1] + kline[4]) / 2 * 100,
-      resolution: interval
-    }));
+    // Create cache key
+    const cacheKey = `${coinId}-${days}-${interval}`;
+    
+    // Check cache first
+    if (cache[cacheKey] && (Date.now() - cache[cacheKey].timestamp) < CACHE_TTL) {
+      console.log(`Using cached data for ${symbol} (${interval})`);
+      return cache[cacheKey].data;
+    }
+    
+    // Implement retry logic with exponential backoff
+    let retries = 3;
+    let lastError;
+    
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=${days}`
+        );
+        
+        // Handle rate limiting specifically
+        if (response.status === 429) {
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '60', 10);
+          console.warn(`CoinGecko rate limit hit, retrying after ${retryAfter} seconds`);
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          continue;
+        }
+
+        if (!response.ok) {
+          throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error('Empty or invalid response from CoinGecko');
+        }
+        
+        // Transform and cache the data
+        const transformedData = data.map((kline: any) => ({
+          symbol,
+          timestamp: kline[0], // Open time
+          open: kline[1],
+          high: kline[2],
+          low: kline[3],
+          close: kline[4],
+          // Calculate a fake volume based on price range
+          volume: (kline[2] - kline[3]) * (kline[1] + kline[4]) / 2 * 100,
+          resolution: interval
+        }));
+        
+        // Update cache
+        cache[cacheKey] = {
+          data: transformedData,
+          timestamp: Date.now()
+        };
+        
+        return transformedData;
+      } catch (error) {
+        lastError = error;
+        console.error(`CoinGecko attempt ${attempt + 1} failed:`, error);
+        
+        if (attempt < retries - 1) {
+          // Exponential backoff
+          const delay = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    // If we have cached data, return it even if expired as fallback
+    if (cache[cacheKey]) {
+      console.warn(`Using expired cache as fallback for ${symbol}`);
+      return cache[cacheKey].data;
+    }
+    
+    throw lastError || new Error('Failed to fetch data from CoinGecko');
   } catch (error) {
     console.error('Error fetching from CoinGecko:', error);
     throw error;
