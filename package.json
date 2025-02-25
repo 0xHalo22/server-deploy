@@ -9,11 +9,17 @@
     "dev": "ts-node-dev --respawn --transpile-only index.ts"
   },
   "dependencies": {
+    "@radix-ui/react-slot": "^1.1.2",
+    "@radix-ui/react-tooltip": "^1.1.8",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "cmdk": "^1.0.4",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "lucide-react": "^0.475.0",
+    "node-fetch": "^3.3.2",
     "socket.io": "^4.8.1",
-    "node-fetch": "^3.3.2"
+    "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
